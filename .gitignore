@@ -1,0 +1,6 @@
+data/dress
+data/resized_images
+__pycache__
+*.pyc
+models/*
+wandb/*
