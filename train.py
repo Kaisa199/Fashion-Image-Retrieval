@@ -20,7 +20,7 @@ SPLIT = 'data/image_splits/split.{}.{}.json'
 
 triplet_avg = nn.TripletMarginLoss(reduction='elementwise_mean', margin=1)
 
-def eval_batch(data_loader, image_encoder, caption_encoder, attention_encoder, ranker):
+def eval_batch(data_loader, image_encoder, caption_encoder, ranker):
     ranker.update_emb(image_encoder)
     rankings = []
     loss = []
@@ -31,22 +31,19 @@ def eval_batch(data_loader, image_encoder, caption_encoder, attention_encoder, r
             candidate_images = candidate_images.to(device)
             candidate_ft = image_encoder.forward(candidate_images)
             captions = captions.to(device)
-            caption_ft = caption_encoder(captions, lengths)
+            caption_ft = caption_encoder(captions, candidate_ft)
 
-            candidate_ft_merge = candidate_ft.unsqueeze(1)
-            sum_ft = torch.cat([candidate_ft_merge, caption_ft], dim=1)
-            sum_ft, _ = attention_encoder(sum_ft, sum_ft, sum_ft)
-            sum_ft = sum_ft.squeeze(1)
-            sum_ft = sum_ft.mean(dim=1)
-
-            target_asins = [meta_info[m]['target'] for m in range(len(meta_info))]
-            rankings.append(ranker.compute_rank(candidate_ft + sum_ft, target_asins))
+            # random select negative examples
             m = target_images.size(0)
             random_index = [m - 1 - n for n in range(m)]
             random_index = torch.LongTensor(random_index)
             negative_ft = target_ft[random_index]
-            loss.append(triplet_avg(anchor=(candidate_ft + sum_ft),
+
+            loss.append(triplet_avg(anchor=(candidate_ft + caption_ft),
                                     positive=target_ft, negative=negative_ft))
+
+            target_asins = [meta_info[m]['target'] for m in range(len(meta_info))]
+            rankings.append(ranker.compute_rank(candidate_ft + caption_ft, target_asins))
 
     metrics = {}
     rankings = torch.cat(rankings, dim=0)
@@ -105,7 +102,6 @@ def train(args):
     caption_encoder = DistilBertEncoder(vocab_size=len(vocab), vocab_embed_size=args.embed_size,
                                         embed_size=args.embed_size).to(device)
     
-    attention_encoder = MultiHeadAttention(args.embed_size, 8).to(device)
     caption_encoder.train()
     params = image_encoder.get_trainable_parameters() + caption_encoder.get_trainable_parameters()
     current_lr = args.learning_rate
@@ -125,15 +121,11 @@ def train(args):
             candidate_images = candidate_images.to(device)
             candidate_ft = image_encoder.forward(candidate_images)
 
+
             captions = captions.to(device)
 
-            caption_ft = caption_encoder(captions, lengths)
+            caption_ft = caption_encoder(captions, candidate_ft)
 
-            candidate_ft_merge = candidate_ft.unsqueeze(1)
-            sum_ft = torch.cat([candidate_ft_merge, caption_ft], dim=1)
-            sum_ft, _ = attention_encoder(sum_ft, sum_ft, sum_ft)
-            sum_ft = sum_ft.squeeze(1)
-            sum_ft = sum_ft.mean(dim=1)
 
 
             # random select negative examples
@@ -142,7 +134,7 @@ def train(args):
             random_index = torch.LongTensor(random_index)
             negative_ft = target_ft[random_index]
 
-            loss = triplet_avg(anchor=(candidate_ft + sum_ft),
+            loss = triplet_avg(anchor=(candidate_ft + caption_ft),
                                positive=target_ft, negative=negative_ft)
 
             caption_encoder.zero_grad()
@@ -160,7 +152,7 @@ def train(args):
         image_encoder.eval()
         caption_encoder.eval()
         logging('-' * 77)
-        metrics = eval_batch(data_loader_dev, image_encoder, caption_encoder, attention_encoder, ranker)
+        metrics = eval_batch(data_loader_dev, image_encoder, caption_encoder, ranker)
         logging('| eval loss: {:8.3f} | score {:8.5f} / {:8.5f} '.format(
             metrics['loss'], metrics['score'], best_score))
         logging('-' * 77)
@@ -174,15 +166,15 @@ def train(args):
             best_score = dev_score
             # save best model
             # resnet = image_encoder.delete_resnet()
-            swin = image_encoder
-            torch.save(image_encoder.state_dict(), os.path.join(
+            # swin = image_encoder
+            torch.save(image_encoder, os.path.join(
                 save_folder,
                 'image-{}.th'.format(args.embed_size)))
             # image_encoder.load_resnet(resnet)
-            image_encoder.load_swin_transformer(swin)
+            # image_encoder.load_swin_transformer(swin)
 
 
-            torch.save(caption_encoder.state_dict(), os.path.join(
+            torch.save(caption_encoder, os.path.join(
                 save_folder,
                 'cap-{}.th'.format(args.embed_size)))
 

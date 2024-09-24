@@ -133,13 +133,14 @@ class DistilBertEncoder(nn.Module):
         self.embed = nn.Embedding(vocab_size, vocab_embed_size)
         self.attention = MultiHeadAttention(embed_size, 8)
     
-    def forward(self, input, lengths):
+    def forward(self, input, image_embed):
         input = self.embed(input)
         output = self.distilbert(inputs_embeds=input)
         output = self.out_linear(output.last_hidden_state)
-        # [3,21,768] -> [3,768]
-        # output, _ = self.attention(output, output, output)
-        # output = output.mean(dim=1)
+        image_embed = image_embed.unsqueeze(1)
+        output = torch.cat([output, image_embed], dim=1)
+        output, _ = self.attention(output, output, output)
+        output = output.mean(dim=1)
         
         return output
 
