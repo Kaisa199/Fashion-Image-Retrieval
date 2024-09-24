@@ -138,8 +138,8 @@ class DistilBertEncoder(nn.Module):
         output = self.distilbert(inputs_embeds=input)
         output = self.out_linear(output.last_hidden_state)
         # [3,21,768] -> [3,768]
-        output, _ = self.attention(output, output, output)
-        output = output.mean(dim=1)
+        # output, _ = self.attention(output, output, output)
+        # output = output.mean(dim=1)
         
         return output
 

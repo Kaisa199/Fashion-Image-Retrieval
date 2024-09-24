@@ -7,8 +7,8 @@ from torchvision import transforms
 from utils import create_exp_dir, Ranker
 from data_loader import get_loader
 from build_vocab import Vocabulary
-from models import DummyImageEncoder, DummyCaptionEncoder, DistilBertEncoder
-import wandb
+from models import DummyImageEncoder, DummyCaptionEncoder, DistilBertEncoder, MultiHeadAttention
+# import wandb
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -20,7 +20,7 @@ SPLIT = 'data/image_splits/split.{}.{}.json'
 
 triplet_avg = nn.TripletMarginLoss(reduction='elementwise_mean', margin=1)
 
-def eval_batch(data_loader, image_encoder, caption_encoder, ranker):
+def eval_batch(data_loader, image_encoder, caption_encoder, attention_encoder, ranker):
     ranker.update_emb(image_encoder)
     rankings = []
     loss = []
@@ -32,14 +32,21 @@ def eval_batch(data_loader, image_encoder, caption_encoder, ranker):
             candidate_ft = image_encoder.forward(candidate_images)
             captions = captions.to(device)
             caption_ft = caption_encoder(captions, lengths)
-            target_asins = [ meta_info[m]['target'] for m in range(len(meta_info)) ]
-            rankings.append(ranker.compute_rank(candidate_ft + caption_ft, target_asins))
+
+            candidate_ft_merge = candidate_ft.unsqueeze(1)
+            sum_ft = torch.cat([candidate_ft_merge, caption_ft], dim=1)
+            sum_ft, _ = attention_encoder(sum_ft, sum_ft, sum_ft)
+            sum_ft = sum_ft.squeeze(1)
+            sum_ft = sum_ft.mean(dim=1)
+
+            target_asins = [meta_info[m]['target'] for m in range(len(meta_info))]
+            rankings.append(ranker.compute_rank(candidate_ft + sum_ft, target_asins))
             m = target_images.size(0)
             random_index = [m - 1 - n for n in range(m)]
             random_index = torch.LongTensor(random_index)
             negative_ft = target_ft[random_index]
-            loss.append(triplet_avg(anchor=(candidate_ft + caption_ft),
-                               positive=target_ft, negative=negative_ft))
+            loss.append(triplet_avg(anchor=(candidate_ft + sum_ft),
+                                    positive=target_ft, negative=negative_ft))
 
     metrics = {}
     rankings = torch.cat(rankings, dim=0)
@@ -49,7 +56,7 @@ def eval_batch(data_loader, image_encoder, caption_encoder, ranker):
 
 
 def train(args):
-    wandb.init(project="image-caption-training", config=args)
+    # wandb.init(project="image-caption-training", config=args)
     
     transform = transforms.Compose([ 
         transforms.RandomCrop(args.crop_size),
@@ -97,6 +104,8 @@ def train(args):
     #                                       embed_size=args.embed_size).to(device)
     caption_encoder = DistilBertEncoder(vocab_size=len(vocab), vocab_embed_size=args.embed_size,
                                         embed_size=args.embed_size).to(device)
+    
+    attention_encoder = MultiHeadAttention(args.embed_size, 8).to(device)
     caption_encoder.train()
     params = image_encoder.get_trainable_parameters() + caption_encoder.get_trainable_parameters()
     current_lr = args.learning_rate
@@ -120,13 +129,20 @@ def train(args):
 
             caption_ft = caption_encoder(captions, lengths)
 
+            candidate_ft_merge = candidate_ft.unsqueeze(1)
+            sum_ft = torch.cat([candidate_ft_merge, caption_ft], dim=1)
+            sum_ft, _ = attention_encoder(sum_ft, sum_ft, sum_ft)
+            sum_ft = sum_ft.squeeze(1)
+            sum_ft = sum_ft.mean(dim=1)
+
+
             # random select negative examples
             m = target_images.size(0)
             random_index = [m - 1 - n for n in range(m)]
             random_index = torch.LongTensor(random_index)
             negative_ft = target_ft[random_index]
 
-            loss = triplet_avg(anchor=(candidate_ft + caption_ft),
+            loss = triplet_avg(anchor=(candidate_ft + sum_ft),
                                positive=target_ft, negative=negative_ft)
 
             caption_encoder.zero_grad()
@@ -139,16 +155,16 @@ def train(args):
                     '| epoch {:3d} | step {:6d}/{:6d} | lr {:06.6f} | train loss {:8.3f}'.format(epoch, i, total_step,
                                                                                                  current_lr,
                                                                                                  loss.item()))
-                wandb.log({"train_loss": loss.item(), "epoch": epoch, "step": i, "learning_rate": current_lr})
+                # wandb.log({"train_loss": loss.item(), "epoch": epoch, "step": i, "learning_rate": current_lr})
 
         image_encoder.eval()
         caption_encoder.eval()
         logging('-' * 77)
-        metrics = eval_batch(data_loader_dev, image_encoder, caption_encoder, ranker)
+        metrics = eval_batch(data_loader_dev, image_encoder, caption_encoder, attention_encoder, ranker)
         logging('| eval loss: {:8.3f} | score {:8.5f} / {:8.5f} '.format(
             metrics['loss'], metrics['score'], best_score))
         logging('-' * 77)
-        wandb.log({"eval_loss": metrics['loss'], "eval_score": metrics['score'], "epoch": epoch})
+        # wandb.log({"eval_loss": metrics['loss'], "eval_score": metrics['score'], "epoch": epoch})
 
         image_encoder.train()
         caption_encoder.train()
@@ -158,7 +174,7 @@ def train(args):
             best_score = dev_score
             # save best model
             # resnet = image_encoder.delete_resnet()
-            swin = image_encoder.delete_swin_transformer()
+            swin = image_encoder
             torch.save(image_encoder.state_dict(), os.path.join(
                 save_folder,
                 'image-{}.th'.format(args.embed_size)))
@@ -184,7 +200,7 @@ def train(args):
         if stop_train:
             break
     logging('best_dev_score: {}'.format(best_score))
-    wandb.log({"best_dev_score": best_score})
+    # wandb.log({"best_dev_score": best_score})
 
 
 
