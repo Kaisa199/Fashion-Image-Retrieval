@@ -123,7 +123,6 @@ def train(args):
 
 
             captions = captions.to(device)
-
             caption_ft = caption_encoder(captions, candidate_ft)
 
 

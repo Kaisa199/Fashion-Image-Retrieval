@@ -131,7 +131,7 @@ class DistilBertEncoder(nn.Module):
         self.distilbert = DistilBertModel.from_pretrained('distilbert-base-uncased')
         self.out_linear = nn.Linear(self.distilbert.config.hidden_size, embed_size) 
         self.embed = nn.Embedding(vocab_size, vocab_embed_size)
-        self.attention = MultiHeadAttention(embed_size, 8)
+        self.attention = MultiHeadAttention(embed_size, 8).to(device)
     
     def forward(self, input, image_embed):
         input = self.embed(input)
