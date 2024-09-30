@@ -103,6 +103,7 @@ def train(args):
                                         embed_size=args.embed_size).to(device)
     
     caption_encoder.train()
+    image_encoder.train()
     params = image_encoder.get_trainable_parameters() + caption_encoder.get_trainable_parameters()
     current_lr = args.learning_rate
     optimizer = torch.optim.SGD(params, lr=current_lr)
@@ -111,7 +112,7 @@ def train(args):
     best_score = float('-inf')
     stop_train = False
     total_step = len(data_loader)
-    for epoch in range(5):
+    for epoch in range(10):
 
         for i, (target_images, candidate_images, captions, lengths, meta_info) in enumerate(data_loader):
 
@@ -215,7 +216,7 @@ if __name__ == '__main__':
     #                     help='dimension of word embedding vectors')
     # Learning parameters
     parser.add_argument('--batch_size', type=int, default=2)
-    parser.add_argument('--num_workers', type=int, default=16)
+    parser.add_argument('--num_workers', type=int, default=8)
     parser.add_argument('--learning_rate', type=float, default=0.001)
 
     args = parser.parse_args()

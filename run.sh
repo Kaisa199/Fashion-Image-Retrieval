@@ -1,1 +1,1 @@
-python train.py --data_set dress --batch_size 1
+python train.py --data_set dress --batch_size 64

@@ -43,9 +43,10 @@ class Ranker():
         return image, data[id]
 
     def get_items(self, indexes):
+        # Trích xuất dữ liệu cần thiết cho xử lý song song
+        data = self.data
         items = Parallel(n_jobs=self.num_workers)(
-            delayed(self.get_item)(
-                i) for i in indexes)
+            delayed(self.get_item)(i) for i in indexes)
         images, meta_info = zip(*items)
         images = torch.stack(images, dim=0)
         return images, meta_info

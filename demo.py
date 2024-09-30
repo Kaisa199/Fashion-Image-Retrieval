@@ -19,14 +19,14 @@ from sklearn.metrics.pairwise import cosine_similarity
 DICT = 'data/captions/dict.{}.json'
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
-image_model_path = "/home/kaisa/Desktop/LEARN/Thsy/ir-dev/models/dress-20240924-180328/image-768.th"
-caption_model_path = "/home/kaisa/Desktop/LEARN/Thsy/ir-dev/models/dress-20240924-180328/cap-768.th"
+image_model_path = "/home/kaisa/Desktop/LEARN/Thsy/ir-dev/models/dress-20240930-134046/image-768.th"
+caption_model_path = "/home/kaisa/Desktop/LEARN/Thsy/ir-dev/models/dress-20240930-134046/cap-768.th"
 image_model = torch.load(image_model_path).to(device)
 caption_model = torch.load(caption_model_path).to(device)
 vocab = Vocabulary()
 vocab.load(DICT.format("dress"))
 
-def generate_emb(image_path, caption_texts, img_name, save_embeds):
+def generate_emb(image_path, caption_texts, img_name, save_embeds, k):
     # Load a single imageReplace with actual image path
     image = Image.open(image_path)
     
@@ -36,12 +36,7 @@ def generate_emb(image_path, caption_texts, img_name, save_embeds):
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     ])
-
-    input_tensor_1 = transform(image).unsqueeze(0)  # Add batch dimension
-    input_tensor_2 = transform(image).unsqueeze(0)  # Add batch dimension
-    input_tensor_3 = transform(image).unsqueeze(0)  # Add batch dimension
-
-    input_tensor = torch.cat([input_tensor_1, input_tensor_2, input_tensor_3], dim=0).to(device)
+    input_tensor = torch.cat([transform(image).unsqueeze(0) for _ in range(k)], dim=0).to(device)
 
     caption_texts = ["is solid black with no sleeves", "is black with straps"]
     
@@ -56,12 +51,17 @@ def generate_emb(image_path, caption_texts, img_name, save_embeds):
 
     caption = torch.LongTensor(caption).unsqueeze(0)
 
-    captions = torch.cat([caption, caption, caption], dim=0).to(device)
+
+    captions = torch.cat([caption] * k, dim=0).to(device)
 
     image_tensor = image_model(input_tensor)
+
     caption_tensor = caption_model(captions, image_tensor)
     #convert to numpy
     caption_tensor = caption_tensor.cpu().detach().numpy()[0]
+
+    
+
 
     # Find 5 similar caption_tensor in save_embeds
     similarities = []
@@ -79,8 +79,9 @@ def generate_emb(image_path, caption_texts, img_name, save_embeds):
 
 if __name__ == "__main__":
     img_path = 'B003FGW7MK.jpg'
+    k = 64
     caption_texts = ["is solid white with no sleeves", "is black with straps"]
     with open('data/embeddings.json', 'r') as f:
         save_embeds = json.load(f)
-    generate_emb(img_path, caption_texts, img_path, save_embeds)
+    generate_emb(img_path, caption_texts, img_path, save_embeds, k)
 

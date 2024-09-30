@@ -137,6 +137,10 @@ class DistilBertEncoder(nn.Module):
         input = self.embed(input)
         output = self.distilbert(inputs_embeds=input)
         output = self.out_linear(output.last_hidden_state)
+        #get last hidden state
+        #torch.Size([64, 19, 768]) to torch.Size([64, 1, 768])
+        output = output[:, -1, :]
+        output = output.unsqueeze(1)
         image_embed = image_embed.unsqueeze(1)
         output = torch.cat([output, image_embed], dim=1)
         output, _ = self.attention(output, output, output)
