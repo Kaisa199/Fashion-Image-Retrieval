@@ -81,20 +81,20 @@ def evaluate_metrics(json_path, pred_path):
     recall_5 = 0
     recall_10 = 0
 
-    for item in data:
+    for item in pred:
         target = item['target']
         ranks = item['ranking']
         if ranks[0] == target:
             recall_1 += 1
-        if target in ranks[:5]:
-            recall_5 += 1
         if target in ranks[:10]:
+            recall_5 += 1
+        if target in ranks[:50]:
             recall_10 += 1
 
     recall_1 /= len(data)
     recall_5 /= len(data)
     recall_10 /= len(data)
-    print(f"Recall@1: {recall_1:.4f}, Recall@5: {recall_5:.4f}, Recall@10: {recall_10:.4f}")
+    print(f"Recall@1: {recall_1:.4f}, Recall@10: {recall_5:.4f}, Recall@50: {recall_10:.4f}")
     
 
 
