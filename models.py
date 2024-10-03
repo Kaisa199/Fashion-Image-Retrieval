@@ -58,17 +58,65 @@ class MultiHeadAttention(nn.Module):
         multihead_output = self.output_projection(attention_output)  # shape: (batch_size, seq_len, d_model)
         
         return multihead_output, attention_weights
+    
+
+
+class MultiHeadAttention_Add(nn.Module):
+    def __init__(self, d_model, num_heads):
+        super(MultiHeadAttention, self).__init__()
+        assert d_model % num_heads == 0, "d_model must be divisible by num_heads"
+        
+        self.d_model = d_model
+        self.num_heads = num_heads
+        self.head_dim = d_model // num_heads
+        
+        self.query_projection = nn.Linear(d_model, d_model)
+        self.key_projection = nn.Linear(d_model, d_model)
+        self.value_projection = nn.Linear(d_model, d_model)
+        
+        self.output_projection = nn.Linear(d_model, d_model)
+    
+    def forward(self, query, key, value, mask=None):
+        batch_size = query.shape[0]
+        
+        # Project inputs to query, key, and value
+        Q = self.query_projection(query)  # shape: (batch_size, seq_len, d_model)
+        K = self.key_projection(key)      # shape: (batch_size, seq_len, d_model)
+        V = self.value_projection(value)  # shape: (batch_size, seq_len, d_model)
+        
+        # Reshape Q, K, V for multi-head attention
+        Q = Q.view(batch_size, -1, self.num_heads, self.head_dim).transpose(1, 2)  # shape: (batch_size, num_heads, seq_len, head_dim)
+        K = K.view(batch_size, -1, self.num_heads, self.head_dim).transpose(1, 2)  # shape: (batch_size, num_heads, seq_len, head_dim)
+        V = V.view(batch_size, -1, self.num_heads, self.head_dim).transpose(1, 2)  # shape: (batch_size, num_heads, seq_len, head_dim)
+        
+        # Calculate attention scores
+        scores = torch.matmul(Q, K.transpose(-2, -1)) / torch.sqrt(torch.tensor(self.head_dim, dtype=torch.float32).to(query.device))  # shape: (batch_size, num_heads, seq_len, seq_len)
+        
+        # Apply mask (if provided)
+        if mask is not None:
+            scores = scores.masked_fill(mask == 0, -1e9)
+        
+        # Apply softmax to get attention weights
+        attention_weights = F.softmax(scores, dim=-1)  # shape: (batch_size, num_heads, seq_len, seq_len)
+        
+        # Apply attention weights to value projections
+        attention_output = torch.matmul(attention_weights, V)  # shape: (batch_size, num_heads, seq_len, head_dim)
+        
+        # Generate additive attention
+        additive_attention = attention_output + scores
+        
+        # Generate final output
+        output = torch.cat([attention_output, additive_attention], dim=-1)  # shape: (batch_size, num_heads, seq_len, 2*head_dim)
+        output = output.transpose(1, 2).contiguous().view(batch_size, -1, self.d_model * 2)  # shape: (batch_size, seq_len, d_model*2)
+        
+        # Project back to original dimension
+        final_output = self.output_projection(output)  # shape: (batch_size, seq_len, d_model)
+        # Reshape attention output
+        return final_output
 
 class DummyImageEncoder(nn.Module):
     def __init__(self, embed_size):
-        """Load the pretrained ResNet-152 and replace top fc layer."""
         super(DummyImageEncoder, self).__init__()
-        # resnet = models.resnet152(pretrained=True)
-        # modules = list(resnet.children())[:-1]  # delete the last fc layer.
-        # self.resnet = nn.Sequential(*modules)
-        # self.linear = nn.Linear(resnet.fc.in_features, embed_size)
-        # self.bn = nn.BatchNorm1d(resnet.fc.in_features, momentum=0.01)
-
         swin = models.swin_t(pretrained=True)
         modules = list(swin.children())[:-1]
         self.swin = nn.Sequential(*modules)
@@ -79,16 +127,6 @@ class DummyImageEncoder(nn.Module):
 
     def get_trainable_parameters(self):
         return list(self.bn.parameters()) + list(self.linear.parameters())
-
-    # def load_resnet(self, resnet=None):
-    #     if resnet is None:
-    #         resnet = models.resnet152(pretrained=True)
-    #         modules = list(resnet.children())[:-1]  # delete the last fc layer.
-    #         self.resnet = nn.Sequential(*modules)
-    #         self.resnet_in_features = resnet.fc.in_features
-    #     else:
-    #         self.resnet = resnet
-    #     return
     
     def load_swin_transformer(self, swin_transformer=None):
         if swin_transformer is None:

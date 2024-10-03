@@ -8,8 +8,8 @@ from utils import create_exp_dir, Ranker
 from data_loader import get_loader
 from build_vocab import Vocabulary
 from models import DummyImageEncoder, DummyCaptionEncoder, DistilBertEncoder, MultiHeadAttention
-# import wandb
-
+import wandb
+import torch.nn.functional as F
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
@@ -52,8 +52,38 @@ def eval_batch(data_loader, image_encoder, caption_encoder, ranker):
     return metrics
 
 
+
+# Define the similarity kernel (dot product or cosine similarity)
+def similarity_kernel(x1, x2, method='cosine'):
+    if method == 'cosine':
+        return F.cosine_similarity(x1, x2, dim=-1)
+    elif method == 'dot':
+        return torch.sum(x1 * x2, dim=-1)
+    else:
+        raise ValueError("Unsupported similarity method")
+# Define the loss function with provided embedding shapes
+def batch_negative_sampling_loss(target_image_embeddings, image_embeddings, text_embeddings, batch_size, similarity_method='cosine'):
+    losses = []
+    for i in range(batch_size):
+        # Positive sample (compare target_image_embeddings and o_{xt} -> text_embeddings)
+        pos_sim = similarity_kernel(target_image_embeddings[i], text_embeddings[i], method=similarity_method)
+        # Negative samples (compare target_image_embeddings[j] with o_{xt} -> text_embeddings[i] for all j)
+        neg_sims = similarity_kernel(target_image_embeddings, text_embeddings[i], method=similarity_method)  # Compare all target_image_embeddings with text_embeddings[i]
+        # Compute the numerator (positive pair similarity)
+        pos_exp = torch.exp(pos_sim)
+        # Compute the denominator (sum of exponentiated similarities with all samples)
+        neg_exp_sum = torch.sum(torch.exp(neg_sims))
+        # Compute the log loss for this particular instance
+        loss_i = -torch.log(pos_exp / neg_exp_sum)
+        losses.append(loss_i)
+    # Compute the final batch loss by averaging the losses over the batch
+    return torch.mean(torch.stack(losses))
+
+
+
+
 def train(args):
-    # wandb.init(project="image-caption-training", config=args)
+    wandb.init(project="image-caption-training", config=args)
     
     transform = transforms.Compose([ 
         transforms.RandomCrop(args.crop_size),
@@ -134,6 +164,9 @@ def train(args):
             random_index = torch.LongTensor(random_index)
             negative_ft = target_ft[random_index]
 
+
+            # loss = batch_negative_sampling_loss(target_ft, candidate_ft, caption_ft, target_ft.size(0), similarity_method='cosine')
+
             loss = triplet_avg(anchor=(candidate_ft + caption_ft),
                                positive=target_ft, negative=negative_ft)
 
@@ -147,7 +180,7 @@ def train(args):
                     '| epoch {:3d} | step {:6d}/{:6d} | lr {:06.6f} | train loss {:8.3f}'.format(epoch, i, total_step,
                                                                                                  current_lr,
                                                                                                  loss.item()))
-                # wandb.log({"train_loss": loss.item(), "epoch": epoch, "step": i, "learning_rate": current_lr})
+                wandb.log({"train_loss": loss.item(), "epoch": epoch, "step": i, "learning_rate": current_lr})
 
         image_encoder.eval()
         caption_encoder.eval()
@@ -156,7 +189,7 @@ def train(args):
         logging('| eval loss: {:8.3f} | score {:8.5f} / {:8.5f} '.format(
             metrics['loss'], metrics['score'], best_score))
         logging('-' * 77)
-        # wandb.log({"eval_loss": metrics['loss'], "eval_score": metrics['score'], "epoch": epoch})
+        wandb.log({"eval_loss": metrics['loss'], "eval_score": metrics['score'], "epoch": epoch})
 
         image_encoder.train()
         caption_encoder.train()
@@ -192,7 +225,7 @@ def train(args):
         if stop_train:
             break
     logging('best_dev_score: {}'.format(best_score))
-    # wandb.log({"best_dev_score": best_score})
+    wandb.log({"best_dev_score": best_score})
 
 
 
@@ -217,7 +250,7 @@ if __name__ == '__main__':
     # Learning parameters
     parser.add_argument('--batch_size', type=int, default=2)
     parser.add_argument('--num_workers', type=int, default=8)
-    parser.add_argument('--learning_rate', type=float, default=0.001)
+    parser.add_argument('--learning_rate', type=float, default=0.01)
 
     args = parser.parse_args()
 

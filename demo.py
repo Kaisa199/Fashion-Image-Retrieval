@@ -19,8 +19,8 @@ from sklearn.metrics.pairwise import cosine_similarity
 DICT = 'data/captions/dict.{}.json'
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
-image_model_path = "/home/kaisa/Desktop/LEARN/Thsy/ir-dev/models/dress-20240930-134046/image-768.th"
-caption_model_path = "/home/kaisa/Desktop/LEARN/Thsy/ir-dev/models/dress-20240930-134046/cap-768.th"
+image_model_path = "/home/kaisa/Desktop/LEARN/Thsy/ir-dev/models/dress-20241002-130745/image-768.th"
+caption_model_path = "/home/kaisa/Desktop/LEARN/Thsy/ir-dev/models/dress-20241002-130745/cap-768.th"
 image_model = torch.load(image_model_path).to(device)
 caption_model = torch.load(caption_model_path).to(device)
 vocab = Vocabulary()
@@ -59,9 +59,6 @@ def generate_emb(image_path, caption_texts, img_name, save_embeds, k):
     caption_tensor = caption_model(captions, image_tensor)
     #convert to numpy
     caption_tensor = caption_tensor.cpu().detach().numpy()[0]
-
-    
-
 
     # Find 5 similar caption_tensor in save_embeds
     similarities = []

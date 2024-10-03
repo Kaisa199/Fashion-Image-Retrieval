@@ -15,8 +15,8 @@ IMAGE_ROOT = 'data/dress/'
 CAPT = 'data/captions/cap.{}.{}.json'
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
-image_model_path = "/home/kaisa/Desktop/LEARN/Thsy/ir-dev/models/dress-20240930-134046/image-768.th"
-caption_model_path = "/home/kaisa/Desktop/LEARN/Thsy/ir-dev/models/dress-20240930-134046/cap-768.th"
+image_model_path = "/home/kaisa/Desktop/LEARN/Thsy/ir-dev/models/dress-20241002-130745/image-768.th"
+caption_model_path = "/home/kaisa/Desktop/LEARN/Thsy/ir-dev/models/dress-20241002-130745/cap-768.th"
 vocab = Vocabulary()
 vocab.load(DICT.format("dress"))
 SPLIT = 'data/image_splits/split.{}.{}.json'
@@ -78,8 +78,8 @@ def evaluate_metrics(json_path, pred_path):
 
     #Recall @1, 5, 10
     recall_1 = 0
-    recall_5 = 0
     recall_10 = 0
+    recall_50 = 0
 
     for item in pred:
         target = item['target']
@@ -87,14 +87,14 @@ def evaluate_metrics(json_path, pred_path):
         if ranks[0] == target:
             recall_1 += 1
         if target in ranks[:10]:
-            recall_5 += 1
-        if target in ranks[:50]:
             recall_10 += 1
+        if target in ranks[:50]:
+            recall_50 += 1
 
     recall_1 /= len(data)
-    recall_5 /= len(data)
     recall_10 /= len(data)
-    print(f"Recall@1: {recall_1:.4f}, Recall@10: {recall_5:.4f}, Recall@50: {recall_10:.4f}")
+    recall_50 /= len(data)
+    print(f"Recall@1: {recall_1:.4f}, Recall@10: {recall_10:.4f}, Recall@50: {recall_50:.4f}")
     
 
 
@@ -114,4 +114,4 @@ if __name__ == '__main__':
         caption_model = torch.load(caption_model_path).to(device)
         # evaluate(args, image_model, caption_model, json_path)
 
-        evaluate_metrics("data/captions/cap.dress.val.json", "dress.val.pred.json")
+        evaluate_metrics("data/captions/cap.dress.val.json", "dress.val.pred.new.json")
